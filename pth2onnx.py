@@ -15,15 +15,15 @@ def emoe_model_convert_onnx(model, args, output_path):
         # 对齐数据 - 所有模态序列长度相同
         batch_size = 1
         seq_len = 75
-        dummy_ecg = torch.randn(batch_size, seq_len, args.feature_dims[0])
-        dummy_gsr = torch.randn(batch_size, seq_len, args.feature_dims[1])
-        dummy_video = torch.randn(batch_size, seq_len, args.feature_dims[2])
+        dummy_ecg = torch.randn(batch_size, seq_len, args.feature_dims[0], dtype=torch.float32)
+        dummy_gsr = torch.randn(batch_size, seq_len, args.feature_dims[1], dtype=torch.float32)
+        dummy_video = torch.randn(batch_size, seq_len, args.feature_dims[2], dtype=torch.float32)
     else:
         # 未对齐数据 - 序列长度不同
         batch_size = 1
-        dummy_ecg = torch.randn(batch_size, 8, args.feature_dims[0])
-        dummy_gsr = torch.randn(batch_size, 8, args.feature_dims[1])
-        dummy_video = torch.randn(batch_size, 75, args.feature_dims[2])
+        dummy_ecg = torch.randn(batch_size, 8, args.feature_dims[0], dtype=torch.float32)
+        dummy_gsr = torch.randn(batch_size, 8, args.feature_dims[1], dtype=torch.float32)
+        dummy_video = torch.randn(batch_size, 75, args.feature_dims[2], dtype=torch.float32)
 
     input_names = ["ecg", "gsr", "video"]  # 输入节点名称
     output_names = ["logits_c", "logits_ecg", "logits_v", "logits_gsr", "channel_weight"]  # 输出节点名称
@@ -34,7 +34,7 @@ def emoe_model_convert_onnx(model, args, output_path):
         output_path,
         verbose=True,  # 显示详细信息
         keep_initializers_as_inputs=False,
-        opset_version=11,  # 使用11以获得更好的兼容性
+        opset_version=11,
         input_names=input_names,
         output_names=output_names,
         dynamic_axes={
@@ -84,14 +84,14 @@ def validate_onnx_model(original_model, onnx_path, args):
     if args.need_data_aligned:
         batch_size = 2
         seq_len = 75
-        test_ecg = torch.randn(batch_size, seq_len, args.feature_dims[0])
-        test_gsr = torch.randn(batch_size, seq_len, args.feature_dims[1])
-        test_video = torch.randn(batch_size, seq_len, args.feature_dims[2])
+        test_ecg = torch.randn(batch_size, seq_len, args.feature_dims[0], dtype=torch.float32)
+        test_gsr = torch.randn(batch_size, seq_len, args.feature_dims[1], dtype=torch.float32)
+        test_video = torch.randn(batch_size, seq_len, args.feature_dims[2], dtype=torch.float32)
     else:
         batch_size = 2
-        test_ecg = torch.randn(batch_size, 8, args.feature_dims[0])
-        test_gsr = torch.randn(batch_size, 8, args.feature_dims[1])
-        test_video = torch.randn(batch_size, 75, args.feature_dims[2])
+        test_ecg = torch.randn(batch_size, 8, args.feature_dims[0], dtype=torch.float32)
+        test_gsr = torch.randn(batch_size, 8, args.feature_dims[1], dtype=torch.float32)
+        test_video = torch.randn(batch_size, 75, args.feature_dims[2], dtype=torch.float32)
 
     # PyTorch模型推理
     with torch.no_grad():

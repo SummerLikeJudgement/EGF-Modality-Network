@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ...subNets.transformers_encoder.transformer import TransformerEncoder, MultimodalTransformer_w_JR
 from ...singleTask.model.router import router
-
 class EMOE(nn.Module):
     def __init__(self, args):
         super(EMOE, self).__init__()
