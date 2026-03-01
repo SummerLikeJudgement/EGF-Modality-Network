@@ -10,11 +10,56 @@ from ..utils import MetricsTop, dict_to_str, eva_imp, uni_distill, entropy_balan
 
 logger = logging.getLogger('EMOE')
 
+class Relation(nn.Module):
+    def __init__(self,tau=0.07, eps=1e-5):
+        super(Relation, self).__init__()
+        self.tau = tau # 温度参数
+        self.eps = eps
+        self.l = self.v = self.a =self.length = self.norm_l = self.norm_v = self.norm_a = self.diag = None
+        self.relation_l = self.relation_v = self.relation_a =  self.out_l = self.out_v= self.out_a = None
+
+    def forward(self, thi_l, thi_v, thi_a):
+        self.l = thi_l
+        self.v = thi_v
+        self.a = thi_a
+
+        self.length = thi_l.size(0)  # batch_size
+        # 对特征进行L2归一化
+        self.norm_l = nn.functional.normalize(self.l, 2, dim=1)
+        self.norm_v = nn.functional.normalize(self.v, 2, dim=1)
+        self.norm_a = nn.functional.normalize(self.a, 2, dim=1)
+        # 创建单位矩阵
+        self.diag = torch.eye(self.length).cuda()
+        # 计算模态内的样本相似度矩阵
+        self.relation_l = torch.mm(self.norm_l, self.norm_l.t()) / self.tau #(B,B)
+        self.relation_v = torch.mm(self.norm_v, self.norm_v.t()) / self.tau
+        self.relation_a = torch.mm(self.norm_a, self.norm_a.t()) / self.tau
+        # 移除自相关性（对角线置零）
+        self.relation_l = self.relation_l - self.relation_l * self.diag
+        self.relation_v = self.relation_v - self.relation_v * self.diag
+        self.relation_a = self.relation_a - self.relation_a * self.diag
+        # 重塑矩阵，移除对角线元素
+        self.out_l = self.relation_l.flatten()[:-1].view(self.length - 1, self.length + 1)[:, 1:].flatten().view(self.length,self.length - 1)  # B*(B-1)
+        self.out_v = self.relation_v.flatten()[:-1].view(self.length - 1, self.length + 1)[:, 1:].flatten().view(self.length,self.length - 1)  # B*(B-1)
+        self.out_a = self.relation_a.flatten()[:-1].view(self.length - 1, self.length + 1)[:, 1:].flatten().view(self.length,self.length - 1)  # B*(B-1)
+
+        self.out_l = nn.functional.softmax(self.out_l)
+        self.out_v = nn.functional.softmax(self.out_v)
+        self.out_a = nn.functional.softmax(self.out_a)
+        # 计算各模态间的结构一致性损失
+        l_v = torch.sum((self.out_l - self.out_v) ** 2, dim=1)
+        l_a = torch.sum((self.out_l - self.out_a) ** 2, dim=1)
+        v_a = torch.sum((self.out_a - self.out_v) ** 2, dim=1)
+        loss = l_v.mean() + l_a.mean() + v_a.mean()
+
+        return loss
+
 class EMOE():
     def __init__(self, args):
         self.args = args
         self.criterion = nn.CrossEntropyLoss()
         self.metrics = MetricsTop(args.train_mode).getMetics(args.dataset_name)
+        self.relation = Relation(tau=0.07, eps=1e-5)
 
     def do_train(self, model, dataloader, return_epoch_results=False):
         params = list(model.parameters())
@@ -75,6 +120,12 @@ class EMOE():
                     loss_sim = torch.mean(torch.mean((dist.detach() - w) ** 2, dim=-1))
                     loss_ety = entropy_balance(w)
 
+                    # SSC损失
+                    ssc_ecg = output['ssc_ecg'].contiguous().view(output['ssc_ecg'].shape[0], -1)
+                    ssc_gsr = output['ssc_gsr'].contiguous().view(output['ssc_gsr'].shape[0], -1)
+                    ssc_v = output['ssc_v'].contiguous().view(output['ssc_v'].shape[0], -1)
+                    loss_relation = self.relation(ssc_ecg, ssc_gsr, ssc_v)
+
                     # 自蒸馏/特征蒸馏
                     if self.args.fusion_method == "sum":
                         loss_ud = uni_distill(output['c_proj'], # 学生->多模态融合特征
@@ -85,7 +136,7 @@ class EMOE():
                                               torch.cat([output['ecg_proj'] * w[:,0].view(-1, 1),output['gsr_proj'] * w[:,1].view(-1, 1),output['v_proj'] * w[:,2].view(-1, 1)], dim=1).detach() # 教师->单模态特征
                                               )
 
-                    loss = loss_task_m + (loss_task_ecg + loss_task_gsr + loss_task_v)/3 + 0.1*(loss_ety + 0.1*loss_sim) + 0.1*loss_ud
+                    loss = loss_task_m + (loss_task_ecg + loss_task_gsr + loss_task_v)/3 + 0.1*(loss_ety + 0.1*loss_sim) + 0.1*loss_ud + 0.05*loss_relation
                     loss.backward() # 梯度传播到所有参数（包括单模态预测头）
                     train_loss += loss.item()
 

@@ -164,6 +164,10 @@ class EMOE(nn.Module):
         proj_x_gsr = x_gsr if self.orig_d_gsr == self.d_gsr else self.proj_gsr(x_gsr)
         proj_x_v = x_v if self.orig_d_v == self.d_v else self.proj_v(x_v)
 
+        # ecg_ssc = proj_x_ecg.permute(0, 2, 1)
+        # gsr_ssc = proj_x_gsr.permute(0, 2, 1)
+        # v_ssc = proj_x_v.permute(0, 2, 1)
+
         # 使用encoder（1*1卷积）对投影后特征编码，得到低级特征
         c_ecg = self.encoder_c(proj_x_ecg)
         c_v = self.encoder_c(proj_x_v)
@@ -188,6 +192,10 @@ class EMOE(nn.Module):
         if type(c_gsr_att_seq) == tuple:
             c_gsr_att_seq = c_gsr_att_seq[0]
         c_gsr_att = c_gsr_att_seq[-1]
+
+        ecg_ssc = c_ecg_att
+        gsr_ssc = c_gsr_att
+        v_ssc = c_v_att
 
         # ecg模态预测结果
         ecg_proj = self.proj2_ecg(
@@ -253,5 +261,8 @@ class EMOE(nn.Module):
             'v_proj': v_proj,
             'gsr_proj': gsr_proj,
             # 'c_fea': c_fusion,
+            'ssc_ecg':ecg_ssc,
+            'ssc_gsr':gsr_ssc,
+            'ssc_v':v_ssc
         }
         return res
